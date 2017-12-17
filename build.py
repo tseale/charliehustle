@@ -8,7 +8,6 @@ import os
 
 import mlbgame
 
-
 eloData = None
 
 teamAbbrevs = ['ARI','ATL','BAL','BOS','CHC','CWS','CIN','CLE','COL',
@@ -60,16 +59,22 @@ def games_in_season(season):
         for day in range(1,32):
             print '\n{}/{}/{}'.format(month,day,season)
             for gameID in game_ids_for_date(month,day,season):
-                game = mlbgame.overview(gameID)
+                try:
+                    game = mlbgame.overview(gameID)
+                except:
+                    break
                 if not data_exists_for_game(game):
                     break
                 awayData = pd.read_csv('data/{}/teams/{}_{}_data.csv'.format(season,game.away_name_abbrev,season))
                 homeData = pd.read_csv('data/{}/teams/{}_{}_data.csv'.format(season,game.home_name_abbrev,season))
                 gameData = (awayData,homeData)
+                if not hasattr(game,'time_date'):
+                    break
                 if not game_dates_match(game.time_date,gameData):
                     break
                 gameNumber = game_number_for_game(game)
                 lines = line_for_game(gameData,gameNumber)
+                overUnder = over_under_for_game(gameData,gameNumber)
                 print game.away_name_abbrev,'@',game.home_name_abbrev
                 teamRatings = team_rating_for_game(gameData,gameNumber)
                 expWinPcts = pythagorean_win_pct_for_game(gameData,gameNumber)
@@ -78,23 +83,29 @@ def games_in_season(season):
                 teamWinProbabilities = win_probability_for_game(gameData,gameNumber)
                 winningTeam = game.home_name_abbrev if int(game.home_team_runs)>int(game.away_team_runs) else game.away_name_abbrev
                 winningLine = lines[1] if winningTeam==game.home_name_abbrev else lines[0]
+                wasHomeTeamWinner = 1 if winningTeam==game.home_name_abbrev else 0
                 dataList.append({'Date':game.time_date,
                                  'AwayTeam':game.away_name_abbrev,
                                  'HomeTeam':game.home_name_abbrev,
-                                 'AwayTeamStartingPitcherRating':float(startingPitcherRatings[0]),
-                                 'HomeTeamStartingPitcherRating':float(startingPitcherRatings[1]),
-                                 'AwayTeamStartingPitcherAdjustment':float(startingPitcherAdjustments[0]),
-                                 'HomeTeamStartingPitcherAdjustment':float(startingPitcherAdjustments[1]),
-                                 'AwayTeamWinProbability':float(teamWinProbabilities[0]),
-                                 'HomeTeamWinProbability':float(teamWinProbabilities[1]),
+                                 'AwayTeamID':mlbgameTeamAbbrevToCoversTeamID[game.away_name_abbrev],
+                                 'HomeTeamID':mlbgameTeamAbbrevToCoversTeamID[game.home_name_abbrev],
+                                 'AwayTeamStartingPitcherRating':startingPitcherRatings[0],
+                                 'HomeTeamStartingPitcherRating':startingPitcherRatings[1],
+                                 'AwayTeamStartingPitcherAdjustment':startingPitcherAdjustments[0],
+                                 'HomeTeamStartingPitcherAdjustment':startingPitcherAdjustments[1],
+                                 'AwayTeamWinProbability':teamWinProbabilities[0],
+                                 'HomeTeamWinProbability':teamWinProbabilities[1],
                                  'WinningTeam':winningTeam,
+                                 'WinningTeamID':mlbgameTeamAbbrevToCoversTeamID[winningTeam],
+                                 'WasHomeTeamWinner':wasHomeTeamWinner,
                                  'AwayTeamLine':lines[0],
                                  'HomeTeamLine':lines[1],
+                                 'Over/Under':overUnder,
                                  'WinningTeamLine':winningLine,
-                                 'AwayTeamRating':float(teamRatings[0]),
-                                 'HomeTeamRating':float(teamRatings[1]),
-                                 'AwayTeamPythagoreanExpectedWin%':float(expWinPcts[0]),
-                                 'HomeTeamPythagoreanExpectedWin%':float(expWinPcts[1])})
+                                 'AwayTeamRating':teamRatings[0],
+                                 'HomeTeamRating':teamRatings[1],
+                                 'AwayTeamPythagoreanExpectedWin%':expWinPcts[0],
+                                 'HomeTeamPythagoreanExpectedWin%':expWinPcts[1]})
     data = pd.DataFrame(dataList)
     data.to_csv('data/{}/games/{}_games_data.csv'.format(season,season), encoding='utf-8')
 
@@ -125,6 +136,13 @@ def line_for_game(gameData,gameNumber):
     homeTeamLine = gameData[1].iloc[gameNumber[1]]['Line']
     return awayTeamLine,homeTeamLine
 
+def over_under_for_game(gameData,gameNumber):
+    awayTeamOverUnder = gameData[0].iloc[gameNumber[0]]['Over/Under']
+    homeTeamOverUnder= gameData[1].iloc[gameNumber[1]]['Over/Under']
+    if int(awayTeamOverUnder) is not int(homeTeamOverUnder):
+        return None
+    return homeTeamOverUnder
+
 def team_rating_for_game(gameData,gameNumber):
     awayTeamRating = gameData[0].iloc[gameNumber[0]]['TeamRating']
     homeTeamRating = gameData[1].iloc[gameNumber[1]]['TeamRating']
@@ -143,9 +161,6 @@ def starting_pitcher_rating_for_game(gameData,gameNumber):
 def pythagorean_win_pct_for_game(gameData,gameNumber):
     awayTeamPythagoreanWinPct = gameData[0].iloc[gameNumber[0]]['PythagoreanExpectedWin%']
     homeTeamPythagoreanWinPct = gameData[1].iloc[gameNumber[1]]['PythagoreanExpectedWin%']
-    if awayTeamPythagoreanWinPct is None or homeTeamPythagoreanWinPct is None:
-        awayTeamPythagoreanWinPct = 0.0
-        homeTeamPythagoreanWinPct = 0.0
     return awayTeamPythagoreanWinPct,homeTeamPythagoreanWinPct
 
 def win_probability_for_game(gameData,gameNumber):
@@ -184,11 +199,12 @@ def team_data_for_season(team,season):
         date = datetime.strptime(str(cols[0]),'%m/%d/%y').strftime('%Y/%m/%d')
         homeAway = 'A' if '@' in str(cols[1]) else 'H'
         opp = str(cols[1]).replace('@','').strip()
-        winLoss = 'W' if 'W' in str(cols[2]) else 'L'
+        winLoss = 1 if 'W' in str(cols[2]) else 0
         score = str(cols[2]).replace('W','').replace('L','').strip().split('-')
-        runs = score[0] if winLoss=='W' else score[1]
-        runsAllowed = score[1] if winLoss=='W' else score[0]
+        runs = int(score[0]) if winLoss==1 else int(score[1])
+        runsAllowed = int(score[1]) if winLoss==1 else int(score[0])
         line = str(cols[5])[1:].strip()
+        overUnder = str(cols[6])[1:].strip().split(' ')[0].strip()
         # FiveThirtyEight MLB Data
         teamRating = teamEloData.iloc[i]['rating1_pre'] if homeAway=='H' else teamEloData.iloc[i]['rating2_pre']
         startingPitcherKey = teamEloData.iloc[i]['pitcher1'] if homeAway=='H' else teamEloData.iloc[i]['pitcher2']
@@ -201,18 +217,19 @@ def team_data_for_season(team,season):
                          'Home/Away':homeAway,
                          'Opponent':opp,
                          'Win/Loss':winLoss,
-                         'Runs':int(runs),
-                         'RunsAllowed':int(runsAllowed),
+                         'Runs':runs,
+                         'RunsAllowed':runsAllowed,
                          'StartingPitcherKey':startingPitcherKey,
                          'StartingPitcherRating':startingPitcherRating,
                          'StartingPitcherAdjustment':startingPitcherAdjustment,
                          'WinProbability':winProbability,
-                         'Line':line})
+                         'Line':line,
+                         'Over/Under':overUnder})
     data = pd.DataFrame(dataList)
     data['TotalRunsScored'] = data['Runs'].cumsum()
     data['TotalRunsAllowed'] = data['RunsAllowed'].cumsum()
-    data['Wins'] = np.where(data['Win/Loss']=='W', 1, 0).cumsum()
-    data['Loses'] = np.where(data['Win/Loss']=='L', 1, 0).cumsum()
+    data['Wins'] = np.where(data['Win/Loss']==1, 1, 0).cumsum()
+    data['Loses'] = np.where(data['Win/Loss']==0, 1, 0).cumsum()
     data['Win%'] = data['Wins']/(data['Wins']+data['Loses'])
     data['PythagoreanExpectedWin%'] = np.power(data['TotalRunsScored'],1.81)/(np.power(data['TotalRunsScored'],1.81)+np.power(data['TotalRunsAllowed'],1.81))
     data['PythagoreanExpectedWin%'] = data['PythagoreanExpectedWin%'].shift(1)

@@ -35,7 +35,7 @@ def games_for_seasons(seasons):
             game = seasonData.iloc[i]
             for key,method in pickMethods.items():
                 pick,confidence = method(game)
-                pickLine = game['HomeLine'] if pick==game['HomeTeam'] else game['AwayLine']
+                pickLine = game['HomeTeamLine'] if pick==game['HomeTeam'] else game['AwayTeamLine']
 
                 bankroll = bankrollTrend[key][-1]
                 betAmount = round(float(bankroll)*confidence,2)
@@ -43,9 +43,10 @@ def games_for_seasons(seasons):
 
                 didWinPick = (pick==game['WinningTeam'])
                 if didWinPick:
-                    winningsAmount = round(float(betAmount)*float(convert_line_to_multiplier(game['WinningLine'])),2)
+                    winningsAmount = round(float(betAmount)*float(convert_line_to_multiplier(game['WinningTeamLine'])),2)
                     bankroll += winningsAmount
                 bankrollTrend[key].append(bankroll)
+                print bankroll
 
         plt.title(str(season) + ' MLB Season' );
         plt.xlabel('Games Bet')
